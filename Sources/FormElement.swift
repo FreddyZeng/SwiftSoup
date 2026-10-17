@@ -3,41 +3,63 @@
 //  SwifSoup
 //
 //  Created by Nabil Chatbi on 29/09/16.
-//  Copyright © 2016 Nabil Chatbi.. All rights reserved.
 //
 
 import Foundation
 
 /**
- * A HTML Form Element provides ready access to the form fields/controls that are associated with it. It also allows a
- * form to easily be submitted.
+ A HTML Form Element provides ready access to the form fields/controls that are associated with it. It also allows a
+ form to easily be submitted.
  */
 public class FormElement: Element {
-    private let _elements: Elements = Elements()
+    private var _elements: Elements = Elements()
 
     /**
-     * Create a new, standalone form element.
-     *
-     * @param tag        tag of this element
-     * @param baseUri    the base URI
-     * @param attributes initial attributes
+     Create a new, standalone form element.
+     
+     - parameter tag:        tag of this element
+     - parameter baseUri:    the base URI
+     - parameter attributes: initial attributes
+     - parameter skipChildReserve: Whether to skip reserving space for children in advance.
      */
-    public override init(_ tag: Tag, _ baseUri: String, _ attributes: Attributes) {
-        super.init(tag, baseUri, attributes)
+    public override init(
+        _ tag: Tag,
+        _ baseUri: [UInt8],
+        _ attributes: Attributes,
+        skipChildReserve: Bool = false
+    ) {
+        super.init(tag, baseUri, attributes, skipChildReserve: skipChildReserve)
+    }
+    
+    /**
+     Create a new, standalone form element.
+     
+     - parameter tag:        tag of this element
+     - parameter baseUri:    the base URI
+     - parameter skipChildReserve: Whether to skip reserving space for children in advance.
+     */
+    public override init(
+        _ tag: Tag,
+        _ baseUri: [UInt8],
+        skipChildReserve: Bool = false
+    ) {
+        super.init(tag, baseUri, skipChildReserve: skipChildReserve)
     }
 
+
+
     /**
-     * Get the list of form control elements associated with this form.
-     * @return form controls associated with this element.
+     Get the list of form control elements associated with this form.
+     - returns: form controls associated with this element.
      */
     public func elements() -> Elements {
         return _elements
     }
 
     /**
-     * Add a form control element to this form.
-     * @param element form control to add
-     * @return this form element, for chaining
+     Add a form control element to this form.
+     - parameter element: form control to add
+     - returns: this form element, for chaining
      */
     @discardableResult
     public func addElement(_ element: Element) -> FormElement {
@@ -107,14 +129,65 @@ public class FormElement: Element {
 //    }
 
 	public override func copy(with zone: NSZone? = nil) -> Any {
-		let clone = FormElement(_tag, baseUri!, attributes!)
+		let clone = FormElement(_tag, baseUri!, skipChildReserve: true)
 		return copy(clone: clone)
 	}
 
 	public override func copy(parent: Node?) -> Node {
-		let clone = FormElement(_tag, baseUri!, attributes!)
+		let clone = FormElement(_tag, baseUri!, skipChildReserve: true)
 		return copy(clone: clone, parent: parent)
 	}
+
+    override func copyForDeepClone(parent: Node?) -> Node {
+        let clone = FormElement(_tag, baseUri!, skipChildReserve: true)
+        return copy(
+            clone: clone,
+            parent: parent,
+            copyChildren: false,
+            rebuildIndexes: false,
+            suppressQueryIndexDirty: true
+        )
+    }
+    /// Resolve associations only after the whole structural clone exists. A
+    /// control may precede its form, follow it, or occur outside its subtree.
+    /// Trees without forms never allocate this mapping or perform this pass.
+    internal static func rebindClonedControlAssociations(
+        _ formCopies: [(FormElement, FormElement)],
+        clonedParents: [(Node, Node)]
+    ) {
+        var associatedIDs: Set<ObjectIdentifier> = []
+        for (original, _) in formCopies {
+            for control in original._elements.array() {
+                associatedIDs.insert(ObjectIdentifier(control))
+            }
+        }
+        var controls: [ObjectIdentifier: Element] = [:]
+        controls.reserveCapacity(associatedIDs.count)
+        func record(_ original: Node, _ clone: Node) {
+            let id = ObjectIdentifier(original)
+            if associatedIDs.contains(id), let element = clone as? Element {
+                controls[id] = element
+            }
+        }
+        if !associatedIDs.isEmpty {
+            // The clone queue retains each non-leaf parent and the root. Its
+            // completed child arrays also provide every leaf's identity pair.
+            for (original, clone) in clonedParents {
+                record(original, clone)
+                for (child, childClone) in zip(original.childNodes, clone.childNodes) {
+                    record(child, childClone)
+                }
+            }
+        }
+        for (original, clone) in formCopies {
+            // Preserve explicit order/duplicates and references outside the
+            // copied tree; remap only controls that were structurally cloned.
+            clone._elements = Elements(original._elements.array().map {
+                controls[ObjectIdentifier($0)] ?? $0
+            })
+        }
+    }
+
 	public override func copy(clone: Node, parent: Node?) -> Node {
 		let clone = clone as! FormElement
 		for att in _elements.array() {

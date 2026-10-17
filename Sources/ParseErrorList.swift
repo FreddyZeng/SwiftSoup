@@ -3,7 +3,6 @@
 //  SwiftSoup
 //
 //  Created by Nabil Chatbi on 19/10/16.
-//  Copyright © 2016 Nabil Chatbi.. All rights reserved.
 //
 
 import Foundation
@@ -17,7 +16,8 @@ public class ParseErrorList {
     init(_ initialCapacity: Int, _ maxSize: Int) {
         self.maxSize = maxSize
         self.initialCapacity = initialCapacity
-        array = Array(repeating: nil, count: maxSize)
+        // Reserving storage must not count as already-recorded errors.
+        array.reserveCapacity(max(0, min(initialCapacity, maxSize)))
     }
 
     func canAddError() -> Bool {
